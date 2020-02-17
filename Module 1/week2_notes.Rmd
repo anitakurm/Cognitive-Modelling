@@ -1,0 +1,100 @@
+---
+title: "RJAGS"
+author: "Anita Kurm"
+date: "2/17/2020"
+output: html_document
+---
+
+# Week 2 
+Chicken sexer and learning (Theta is a parameter representing skill level)
+
+Set-up
+```{r}
+pacman::p_load(R2jags)
+set.seed(666)
+#setwd("/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 1") 
+```
+
+
+## Model 1: fixed theta model
+simulating binary choices and checking if it's right
+output is an array of 0 (wrong) and 1 (right)
+Model is a for loop, randomly generating a hit or a miss at a time
+ #G is determined by/distributed as fixed theta
+
+```{r}
+#make an array of 0s that we can populate later with agent's guesses
+#dimensionality of 1 (row), 100 (columns), array(0, c(2,100)) - 2 rows 100 columns, check ?array
+Gfixed <- array(0, c(100))
+
+#make a fixed parameter
+theta <- .7
+
+#number of trials
+ntrials <- 100
+
+#our model
+  #G is determined by/distributed as some process, hence arrow and not equal sign!!
+  #r - randomly sample, binom - from binomial distribution (discrete)¨
+  #1 trial at a time 
+for (t in 1:ntrials) {
+  
+  Gfixed[t] <- rbinom(1,1,theta) 
+  
+}
+
+#How many successes there are?
+sum(Gfixed)
+```
+<- approximately proportionate to the fixed theta!
+
+
+JAGS: 
+model{
+
+  theta ~ dbeta(1, 1) (alpha - success, beta - misses, so 1-1 is basically no information)
+  for (t in 1:ntrials) {
+   G[t] ~ dbinom(theta)  G at every trial is distributed binomially with a parameter theta (that is fixed)
+  }
+}
+
+
+## Model 2: learning model
+We need a fixed starting theta and a fixed alpha (learning rate)
+Theta will be updated in every trial according to the learning rule
+
+Jags is not sequential
+```{r}
+#arrays to be populated with guesses and updated theta after learning
+Glearn <- array(0, c(100))
+theta <- array(0, c(100))
+
+#fixed parameters (learning rate alpha and starting skill level theta)
+alpha <- .05
+theta1 <- .5
+
+ntrials <- 100
+
+#Define first trial
+theta[1] <- theta1
+Glearn[1] <-  rbinom(1, 1, theta[1])
+
+#model
+for (t in 2:ntrials) {
+  #theta in every trial is determined by the previous trial's theta in the power of 1 over 1+learning rate ('the learning rule')
+  
+  theta[t] <- theta [t-1]^(1/(1 + alpha))
+  #update guess
+  Glearn[t] <- rbinom(1, 1, theta[t])
+}
+
+#Glearn - you can see by the end only ones, 
+Glearn
+
+sum(Glearn)
+
+#see theta over time (the learning curve)
+plot(theta)
+```
+
+
