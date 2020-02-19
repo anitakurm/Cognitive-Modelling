@@ -58,6 +58,38 @@ model{
   }
 }
 
+### Run inference for the fixed model using the fixed data
+
+```{r}
+G <-  Gfixed
+
+#look in the workspace for G, ntrials - things to put into the model
+data <- list("G", "ntrials")
+
+#parameters to keep track of - things to get out of the model (we are trying to recover parameters here)
+params <- c("theta")
+
+
+#jags
+samples <- jags(data, inits = NULL, params,  
+                model.file = "chick.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+#remember to hit return in the console
+traceplot(samples)
+
+#get the theta parameter out
+X <-  samples$BUGSoutput$sims.list$theta
+plot(X)
+
+#the posterior for theta
+plot(density(X))
+```
+<- THIS IS YOUR CONCLUSION
+
+
+Rhat - not much bigger than 1 means chains are sufficiently randomly overriding each other 
+
 
 ## Model 2: learning model
 We need a fixed starting theta and a fixed alpha (learning rate)
@@ -97,4 +129,28 @@ sum(Glearn)
 plot(theta)
 ```
 
+
+### Retrieve theta from the learning data
+```{r}
+G <-  Glearn
+
+data <- list("G", "ntrials")
+params <- c("theta", "theta1", "alpha")
+
+
+#jags
+samples <- jags(data, inits = NULL, params,  
+                model.file = "chick_learn.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+#remember to hit return in the console
+#traceplot(samples)
+
+#get the theta parameter out
+X <-  samples$BUGSoutput$sims.list$theta
+plot(X)
+
+#the posterior for theta
+plot(density(X))
+```
 

@@ -4,7 +4,7 @@ model {
   
   for (t in 1:ntrials) {
   
-  G[t] ~ dbinom(theta) 
+  G[t] ~ dbin(theta, 1) 
   }
 
 }
