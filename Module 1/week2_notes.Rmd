@@ -148,9 +148,232 @@ samples <- jags(data, inits = NULL, params,
 
 #get the theta parameter out
 X <-  samples$BUGSoutput$sims.list$theta
-plot(X)
+#plot(X)
 
 #the posterior for theta
 plot(density(X))
 ```
 
+
+Week 2 wednesday notes by Kenneth:
+```{r}
+# get the maximum posterior
+   # get the alpha samples
+alpha_post <- samples$BUGSoutput$sims.list$alpha 
+   # save density
+dens_a <- density(alpha_post)
+   # get the x which gives you the maximum value of y - equivalent to the argmax mathematical operator
+MAP_alpha <- dens_a$x[dens_a$y == max(dens_a$y)]
+
+# and a function:
+jag_map <- function(param_samples){
+  dens <- density(param_samples)
+  return(dens$x[dens$y == max(dens$y)])
+}
+
+
+alpha_post <- samples$BUGSoutput$sims.list$alpha
+jag_map(alpha_post)
+
+# using it multiple times without a for loop
+theta <- samples$BUGSoutput$sims.list$theta
+map_theta <- apply(as.data.frame(theta), 2, FUN = jag_map)
+plot(map_theta)
+
+```
+
+
+
+Still parameter recovery.
+Change learning rate to a random number (do the same for theta) and keep running model with new combinations of parameters
+
+Test out 20 different combinations (DO MORE IN THE ASSIGNMENT!!!!)
+  Simulate data with some pre-defined random parameters
+  Feed that data to our model to try to retrieve the parameters used to create data
+  
+
+
+```{r}
+#random values and combinations of parameters -> write down what we put in -> write down what we get
+set.seed(666)
+
+#recover different parameter combinations for the learning model
+
+trueAlpha <- array(0, c(20))
+inferredAlpha <- array(c(20))
+
+trueTheta1 <- array(0, c(20))
+inferredTheta1 <- array(c(20))
+
+ntrials <- 100
+
+######THE LOOOP
+for (i in 1:20) {
+  #arrays to be populated with guesses and updated theta after learning
+  Glearn <- array(0, c(100))
+  theta <- array(0, c(100))
+  #fixed parameters (learning rate alpha and starting skill level theta)
+  alpha <- runif(1, 0, 1)
+  theta1 <- runif(1,0,1)
+
+
+  #Define first trial
+  theta[1] <- theta1
+  Glearn[1] <-  rbinom(1, 1, theta[1])
+
+  #model
+  for (t in 2:ntrials) {
+    #theta in every trial is determined by the previous trial's theta in the power of 1 over 1+learning rate ('the learning rule')
+  
+    theta[t] <- theta[t-1]^(1/(1 + alpha))
+  #update guess
+    Glearn[t] <- rbinom(1, 1, theta[t])
+  }
+  
+  trueAlpha[i] <- alpha
+  trueTheta1[i] <- theta1
+  
+  G <-  Glearn
+
+  data <- list("G", "ntrials")
+  params <- c("theta", "theta1", "alpha")
+
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "chick_learn.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+  
+  alpha_post <- samples$BUGSoutput$sims.list$alpha
+  inferredAlpha[i] <- jag_map(alpha_post)
+  
+  theta_post <- samples$BUGSoutput$sims.list$theta1
+  inferredTheta1[i] <- jag_map(theta_post)
+  
+}
+
+plot(trueAlpha, inferredAlpha)
+plot(trueTheta1, inferredTheta1)
+```
+
+
+### Model comparison
+
+```{r}
+#-----------Model 1 
+#make an array of 0s that we can populate later with agent's guesses
+#dimensionality of 1 (row), 100 (columns), array(0, c(2,100)) - 2 rows 100 columns, check ?array
+Gfixed <- array(0, c(100))
+
+#make a fixed parameter
+theta <- .7
+
+#number of trials
+ntrials <- 100
+
+#our model
+  #G is determined by/distributed as some process, hence arrow and not equal sign!!
+  #r - randomly sample, binom - from binomial distribution (discrete)¨
+  #1 trial at a time 
+for (t in 1:ntrials) {
+  
+  Gfixed[t] <- rbinom(1,1,theta) 
+  
+}
+
+
+
+#----------Model 2
+#arrays to be populated with guesses and updated theta after learning
+Glearn <- array(0, c(100))
+theta <- array(0, c(100))
+
+#fixed parameters (learning rate alpha and starting skill level theta)
+alpha <- .05
+theta1 <- .5
+
+ntrials <- 100
+
+#Define first trial
+theta[1] <- theta1
+Glearn[1] <-  rbinom(1, 1, theta[1])
+
+#model
+for (t in 2:ntrials) {
+  #theta in every trial is determined by the previous trial's theta in the power of 1 over 1+learning rate ('the learning rule')
+  
+  theta[t] <- theta [t-1]^(1/(1 + alpha))
+  #update guess
+  Glearn[t] <- rbinom(1, 1, theta[t])
+}
+
+
+
+#------------run inference for fixed data and fixed model
+G <-  Gfixed
+
+data <- list("G", "ntrials")
+params <- c("theta")
+
+#jags
+samples <- jags(data, inits = NULL, params,  
+                model.file = "chick.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+DIC.fixed_fixed <- samples$BUGSoutput$DIC 
+
+#------------run inference for learning data and fixed model
+G <-  Glearn
+
+data <- list("G", "ntrials")
+params <- c("theta")
+
+#jags
+samples <- jags(data, inits = NULL, params,  
+                model.file = "chick.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+#dic.data_model
+DIC.learning_fixed <- samples$BUGSoutput$DIC 
+
+
+#------------run inference for learning data and learning model
+G <-  Glearn
+
+data <- list("G", "ntrials")
+params <- c("theta")
+
+#jags
+samples <- jags(data, inits = NULL, params,  
+                model.file = "chick_learn.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+DIC.learning_learning <- samples$BUGSoutput$DIC 
+
+
+#------------run inference for fixed data and learning model
+G <-  Gfixed
+
+data <- list("G", "ntrials")
+params <- c("theta")
+
+#jags
+samples <- jags(data, inits = NULL, params,  
+                model.file = "chick_learn.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+DIC.fixed_learning <- samples$BUGSoutput$DIC 
+
+
+
+#we want matching data - model dic be better than non-matching
+DIC.fixed_fixed - DIC.learning_fixed
+DIC.learning_learning - DIC.fixed_learning
+
+
+```
+
+We want the parameter retrieval model to match the generative model.
