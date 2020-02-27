@@ -1,0 +1,160 @@
+---
+title: "Week 3 notes"
+author: "Anita Kurm"
+date: "2/26/2020"
+output: html_document
+---
+
+Class notes
+```{r}
+#setwd("~/OneDrive - Aarhus universitet/Cognitive Science/8. Semester/Adv. Cognitive Modelling/Class 5-9")
+set.seed(1982)
+
+pacman::p_load(R2jags, extraDistr)
+# library(R2jags)
+# library(extraDistr)
+
+# generate a payoff matrix for the badit task
+# Choise of bandit A = 30% of getting 2, otherwise 0
+# Choice of badit B = 70% of getting 1, otherwise 0
+ntrials <- 100
+Aprob <- .3
+Arew <- 2
+Bprob <- .7
+Brew <- 1
+
+# generate a payoff matrix
+# This is the output the program is gonna run
+payoff <- cbind(rbinom(ntrials, 1, Aprob)* Arew, rbinom(ntrials, 1, Bprob)*Brew)
+
+colSums(payoff)
+
+
+
+
+#############################################################
+#------------------------Random model------------------------
+#############################################################
+
+theta <-  .7
+
+source("random.R")
+random_sims <- random(payoff, ntrials, theta)
+random_sims
+
+
+
+##### Let's use Jags and see if we can recover our parameters
+#----------------Josh: applying the random model (JAGS) to simulated data (random_sims)
+# we are trying to recover b
+x <- random_sims$x
+data <-  list("x", "ntrials")
+
+params <- c("b")
+
+samples <- jags(data, inits = NULL, params, model.file = "random_model.txt", n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+#plot recovered bias 1 
+plot(density(samples$BUGSoutput$sims.list$b[,1]))
+
+#plot recovered bias 2
+plot(density(samples$BUGSoutput$sims.list$b[,2]))
+
+
+#---------------parameter recovery
+
+niterations <- 100
+true_theta <-  array(0, c(niterations))
+infer_b1 <-  array(0, c(niterations))
+infer_b2 <- array(0, c(niterations))
+
+#parameter recovery loop
+for (i in 1:niterations){
+  print(i)
+  #let's see what values the model recovers
+  theta <- runif(1, 0, 1) #a truth in a pretend world
+  b <- c(theta, 1-theta)
+  
+  #run function and store responses
+  random_sims <- random(payoff, ntrials, theta)
+  x <- random_sims$x
+  
+  #set up jags and run model
+  data <-  list("x", "ntrials")
+
+  params <- c("b")
+
+  samples <- jags(data, inits = NULL, params, model.file = "random_model.txt", n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  #fill arrays for parameter recovery oricess
+  true_theta[i] <- theta
+  #find maximum a posterior
+  posterior <-  samples$BUGSoutput$sims.list$b[,1]
+  infer_b1[i] <- density(posterior)$x[which(density(posterior)$y == max(density(posterior)$y))]
+  
+  posterior <-  samples$BUGSoutput$sims.list$b[,2]
+  infer_b2[i] <- density(posterior)$x[which(density(posterior)$y == max(density(posterior)$y))]
+}
+
+#plot it
+#plot recovered bias 1
+par(mfrow = c(2,1))
+plot(true_theta, infer_b1)
+plot(true_theta, infer_b2)
+```
+
+
+## Random model function
+Random agent
+```{r}
+theta <- .7
+
+#bias towards option 1 (theta) and option 2
+b <- c(theta, 1-theta)
+
+#empty array to be filled
+x <- array(0, c(ntrials))
+
+#rewards array to be filled
+r <- array(0, c(ntrials))
+
+
+#a loop
+for (t in 1:ntrials) {
+  #agent that chooses randomly between options 1 and 2 with bias ( to 1) = theta
+  #binomial sample (but really from a categorical distribution)
+  x[t]  <-  rcat(1, b)
+  
+  #what reward does the agent get?
+  r[t] <- payoff[t, x[t]]
+  
+}
+
+r
+sum(r)
+
+
+random <- function(payoff, ntrials, theta) {
+  #bias towards option 1 (theta) and option 2
+  b <- c(theta, 1-theta)
+
+  #empty array to be filled
+  x <- array(0, c(ntrials))
+
+  #rewards array to be filled
+  r <- array(0, c(ntrials))
+  
+  for (t in 1:ntrials) {
+  #agent that chooses randomly between options 1 and 2 with bias ( to 1) = theta
+  #binomial sample (but really from a categorical distribution)
+    x[t]  <-  rcat(1, b)
+  
+  #what reward does the agent get?
+    r[t] <- payoff[t, x[t]]
+    }
+  
+  result <- list(x=x, r=r)
+  return(result) 
+}
+
+```
+

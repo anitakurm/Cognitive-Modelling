@@ -1,0 +1,17 @@
+model {
+  #misspecified bias - no contraint, so b[1] and b[2] might not add up to 1
+  #b[1] ~ dunif(0,1)
+  #b[2] ~ dunif(0,1)
+  
+  #better specification of bias - constraint for bias to add up to 1 through theta
+  theta ~ dunif(0,1)
+  b[1] <- theta
+  b[2] <- 1 - theta
+
+  for (t in 1:ntrials) {
+  #agent that chooses randomly between options 1 and 2 with left/right bias = b[l, r]
+  #binomial sample (but really from a categorical distribution)
+    x[t]  ~  dcat(b)
+    }
+
+}
