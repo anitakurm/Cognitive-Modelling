@@ -1,0 +1,39 @@
+model {
+
+  #constrain the parameters 
+  a ~ dunif(0,1) #the learning rate can only be between 0 and 1
+  beta ~ dnorm(0,.01)T(0,)
+
+  #copy everything but the arrays and result parts of RW.R
+  #set values for trial 1
+  #for every following trial, we consider the previous trial -> we put some valence to trial 1 and then the model starts at trial 2
+  Q[1, 1] ~ dnorm(0,.01)T(0,) #we are going to infer, and we give a prior "we don't know anything, could be any positive value"
+  Q[1, 2] ~ dnorm(0,.01)T(0,)
+
+  #get values for the rest of trials
+  for (t in 2:ntrials) {
+    ##k is the index for bandit
+    for (k in 1:2) {
+      #update utility Q for chosen option ONLY, with reward on last trial
+      #unchosen option stays the same
+      Qupdate[t, k] <- Q[t - 1, k] + (a * (r[t - 1] - Q[t - 1, k])) #the delta rule updatung on both options; it is deterministic
+      Q[t, k] <- ifelse(k == x[t - 1], Qupdate[t, k], Q[t - 1,k]) #but keeping the updated Q only for the chosen option 
+      
+      exp_p[t, k] <-  exp(beta * Q[t, k])
+    }
+    
+    #a separate loop, because we want to sum after all the exponentiations (as representation of all possible options)
+    for (k in 1:2) {
+      p[t, k] <-
+        exp_p[t, k] / sum(exp_p[t, ]) #prob of choosing bandit k on trial t
+    }
+    
+    
+    #the choice is a sample from a distribution, it's not deterministic
+    x[t] ~ dcat(p[t, ])  #choice at trial t, we want it to be stochastic -> from a categorical robability distribution; going to represent relative probability of choosing one machine over other
+    
+    ###r[t] <- payoff[t, x[t]] #reward at trial t based on the choice; r is the reward - the data from the experiment!!
+    
+  }
+  
+}

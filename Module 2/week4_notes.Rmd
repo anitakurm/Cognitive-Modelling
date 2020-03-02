@@ -1,0 +1,112 @@
+---
+title: "Week 4 notes"
+author: "Anita Kurm"
+date: "3/2/2020"
+output: html_document
+---
+
+```{r}
+library(R2jags)
+library(extraDistr)
+```
+
+The learning model
+
+## Task Environment 
+```{r}
+#generate task environment where we'll wait for our agents to learn something
+ntrials <- 100
+Aprob <- .3
+Arew <- 2
+
+Bprob <- .8
+Brew <- 1
+
+#payoff matrix - task environment. Represents draws from separate binomial distributions, defined above (as two slots machines with different rewards and probabilities of reward)
+payoff <-  cbind(rbinom(ntrials, 1, Aprob)*Arew,rbinom(ntrials, 1, Bprob)*Brew)
+
+```
+
+
+The q-learning algorithm
+## The RW model
+```{r}
+#let's call the function
+#first we need to give the agent some parameters
+
+ntrials <- 100
+a <- .4 #learning rate
+beta <- 4 #consistency parameter -the higher - the more consistent/less explorative the agent is
+
+source("RW.R")
+RW_sims <- RW(payoff,ntrials, a, beta)
+
+par(mfrow=c(3,1))
+plot(RW_sims$Q[,1]) #let's plot our learning
+plot(RW_sims$Q[,2])
+plot(x)
+```
+
+## Applying the model to simulated data to recover paramaters 
+```{r}
+x <- RW_sims$x #our choices = simulated data
+r <-  RW_sims$r
+
+data <- list("x", "r", "ntrials")
+params <- c("a", "beta")
+
+samples <- jags.parallel(data, inits = NULL, params,
+                         model.file = "RW.txt",
+                         n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+
+a_infer <- samples$BUGSoutput$sims.list$a
+beta_infer <- samples$BUGSoutput$sims.list$beta
+
+plot(density(a_infer))
+plot(density(beta_infer))
+
+```
+
+
+```{r}
+#run full parameter recovery
+niterations <- 10
+true_a <- array(0, c(niterations))
+true_beta <- array(0, c(niterations))
+
+infer_a <- array(0, c(niterations))
+infer_beta <- array(0, c(niterations))
+
+for (i in 1:niterations){
+  
+  #true paramaters
+  a <- runif(1,0,1)
+  beta <- runif(1,0,5)
+  
+  #run function and extract responses
+  RW_sims <- RW(payoff, ntrials, a, beta)
+  x <- RW_sims$x
+  r <- RW_sims$r
+  
+  data <- list("x", "r", "ntrials")
+  params <- c("a", "beta")
+
+  samples <- jags.parallel(data, inits = NULL, params,
+                         model.file = "RW.txt",
+                         n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  true_a[i] <- a
+  true_beta[i] <- beta
+  
+  #find maximum aposterior
+  posterior <-  samples$BUGSoutput$sims.list$a
+  infer_a[i] <- density(posterior)$x[which(density(posterior)$y == max(density(posterior)$y))]
+  
+  posterior <-  samples$BUGSoutput$sims.list$beta
+  infer_beta[i] <- density(posterior)$x[which(density(posterior)$y == max(density(posterior)$y))]
+  
+}
+
+
+```
+
