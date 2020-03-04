@@ -45,6 +45,8 @@ for (t in 1:ntrials) {
 
 #How many successes there are?
 sum(Gfixed)
+
+
 ```
 <- approximately proportionate to the fixed theta!
 
@@ -76,7 +78,7 @@ samples <- jags(data, inits = NULL, params,
                 n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
 
 #remember to hit return in the console
-traceplot(samples)
+#traceplot(samples)
 
 #get the theta parameter out
 X <-  samples$BUGSoutput$sims.list$theta
@@ -85,6 +87,9 @@ plot(X)
 #the posterior for theta
 plot(density(X))
 ```
+
+
+
 <- THIS IS YOUR CONCLUSION
 
 
@@ -148,7 +153,7 @@ samples <- jags(data, inits = NULL, params,
 
 #get the theta parameter out
 X <-  samples$BUGSoutput$sims.list$theta
-#plot(X)
+plot(X)
 
 #the posterior for theta
 plot(density(X))
@@ -231,7 +236,7 @@ for (i in 1:20) {
   }
   
   trueAlpha[i] <- alpha
-  trueTheta1[i] <- theta1
+  trueTheta1[i] <- theta
   
   G <-  Glearn
 

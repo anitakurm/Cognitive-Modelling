@@ -1,0 +1,343 @@
+---
+title: "Assignment_1"
+author: "Anita Kurm"
+date: "3/3/2020"
+output: html_document
+---
+
+
+## Set-up
+
+```{r}
+source("quick_n_clean_plots.R")
+# plot_dens(x) # plots density plot of x, where x is your sample
+  # plot_scatter(x, y) # plots scatterplot
+  # plot_actual_predicted(actual, predicted) # plot actual vs. predicted
+
+pacman::p_load(R2jags, tidyverse)
+```
+
+# Data simulation and parameter recovery
+
+## The Beta-Binomial model
+simulating binary choices and checking if it's right
+output is an array of 0 (wrong) and 1 (right)
+Model is a for loop, randomly generating a hit or a miss at a time
+ #G is determined by/distributed as fixed theta
+ 
+```{r}
+#----------------Simulate data
+#make an array of 0s that we can populate later with agent's guesses
+#dimensionality of 1 (row), 100 (columns), array(0, c(2,100)) - 2 rows 100 columns, check ?array
+Gfixed <- array(0, c(100))
+
+#make a fixed parameter
+theta <- .9
+
+#number of trials
+ntrials <- 100
+
+#our model
+  #G is determined by/distributed as some process, hence arrow and not equal sign!!
+  #r - randomly sample, binom - from binomial distribution (discrete)¨
+  #1 trial at a time 
+for (t in 1:ntrials) {
+  
+  Gfixed[t] <- rbinom(1,1,theta) 
+  
+}
+
+
+
+#-----------------Infer parameter theta
+G <-  Gfixed
+
+#look in the workspace for G, ntrials - things to put into the model
+data <- list("G", "ntrials")
+
+#parameters to keep track of - things to get out of the model (we are trying to recover parameters here)
+params <- c("theta")
+
+
+#jags
+samples <- jags(data, inits = NULL, params,  
+                model.file = "chick.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+#remember to hit return in the console
+#traceplot(samples)
+
+#get the theta parameter out
+X <-  samples$BUGSoutput$sims.list$theta
+
+plot_dens(X)
+
+
+
+#-----------------Infer parameter theta in a bunch of different agents
+#random values and combinations of parameters -> write down what we put in -> write down what we get
+set.seed(666)
+
+#recover different parameter combinations for the learning model
+n_simulations <- 100
+
+trueTheta <- array(0, c(n_simulations))
+inferredTheta <- array(c(n_simulations))
+
+ntrials <- 100
+
+# maximum aposterior function:
+jag_map <- function(param_samples){
+  dens <- density(param_samples)
+  return(dens$x[dens$y == max(dens$y)])
+}
+
+
+######THE LOOOP
+for (i in 1:n_simulations) {
+  
+  #arrays to be populated with guesses and updated theta after learning
+  Gfixed <- array(0, c(ntrials))
+
+  theta <- runif(1,0,1)
+
+  #model
+  for (t in 1:ntrials) {
+    Gfixed[t] <- rbinom(1,1,theta) 
+  }
+  
+  trueTheta[i] <- theta
+  
+  G <-  Gfixed
+
+  data <- list("G", "ntrials")
+  params <- c("theta")
+
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "chick.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+  
+  theta_post <- samples$BUGSoutput$sims.list$theta
+  inferredTheta[i] <- jag_map(theta_post)
+  
+}
+
+plot_actual_predicted(trueTheta, inferredTheta)
+
+```
+
+
+
+
+
+## The learning model
+
+```{r}
+
+#-----------------Infer parameter theta1 and alpha in a bunch of different agents
+#random values and combinations of parameters -> write down what we put in -> write down what we get
+set.seed(666)
+#recover different parameter combinations for the learning model
+n_simulations <- 100
+trueAlpha <- array(0, c(n_simulations))
+inferredAlpha <- array(c(n_simulations))
+
+trueTheta1 <- array(0, c(n_simulations))
+inferredTheta1 <- array(c(n_simulations))
+
+ntrials <- 100
+
+# maximum aposterior function:
+jag_map <- function(param_samples){
+  dens <- density(param_samples)
+  return(dens$x[dens$y == max(dens$y)])
+}
+
+
+######THE LOOOP
+for (i in 1:n_simulations) {
+  
+  #arrays to be populated with guesses and updated theta after learning
+  Glearn <- array(0, c(ntrials))
+  theta <- array(0, c(ntrials))
+  #fixed parameters (learning rate alpha and starting skill level theta)
+  alpha <- runif(1, 0, 1)
+  theta1 <- runif(1,0,1)
+
+
+  #Define first trial
+  theta[1] <- theta1
+  Glearn[1] <-  rbinom(1, 1, theta[1])
+
+  #model
+  for (t in 2:ntrials) {
+    #theta in every trial is determined by the previous trial's theta in the power of 1 over 1+learning rate ('the learning rule')
+  
+    theta[t] <- theta[t-1]^(1/(1 + alpha))
+  #update guess
+    Glearn[t] <- rbinom(1, 1, theta[t])
+  }
+  
+  trueAlpha[i] <- alpha
+  trueTheta1[i] <- theta
+  
+  G <-  Glearn
+
+  data <- list("G", "ntrials")
+  params <- c("theta", "theta1", "alpha")
+
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "chick_learn.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+  
+  alpha_post <- samples$BUGSoutput$sims.list$alpha
+  inferredAlpha[i] <- jag_map(alpha_post)
+  
+  theta_post <- samples$BUGSoutput$sims.list$theta1
+  inferredTheta1[i] <- jag_map(theta_post)
+  
+}
+
+plot_actual_predicted(trueTheta1, inferredTheta1)
+plot_actual_predicted(trueAlpha, inferredAlpha)
+
+```
+
+
+
+# Model recovery
+```{r}
+n_simulations = 50
+
+
+
+confusion_df <- data.frame() # creates an emmpty data frame
+
+for (i in 1:n_simulations) {
+  
+  #number of trials
+  ntrials <- 100
+  
+  #simulate fixed model data
+  Gfixed <- array(0, c(ntrials))
+  theta <- runif(1,0,1)
+
+  for (t in 1:ntrials) {
+    Gfixed[t] <- rbinom(1,1,theta) 
+  }
+  
+  
+  
+  #simulate learning model data
+  Glearn <- array(0, c(ntrials))
+  theta <- array(0, c(ntrials))
+  alpha <- runif(1, 0, 1)
+  theta1 <- runif(1,0,1)
+  theta[1] <- theta1
+  Glearn[1] <-  rbinom(1, 1, theta[1])
+
+  for (t in 2:ntrials) {
+    theta[t] <- theta[t-1]^(1/(1 + alpha))
+    Glearn[t] <- rbinom(1, 1, theta[t])
+  }
+  
+  
+  
+  #-----------run inference Fixed model to its data
+  G <-  Gfixed
+
+  data <- list("G", "ntrials")
+  params <- c("theta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "chick.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+  DIC.mf_df <- samples$BUGSoutput$DIC 
+  
+  
+  #-----------run inference Fixed model to learning data
+  G <-  Glearn
+
+  data <- list("G", "ntrials")
+  params <- c("theta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "chick.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+  DIC.mf_dl <- samples$BUGSoutput$DIC 
+  
+  
+  #-----------run inference Learning model to learning data
+  G <-  Glearn
+
+  data <- list("G", "ntrials")
+  params <- c("theta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "chick_learn.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+  DIC.ml_dl <- samples$BUGSoutput$DIC
+  
+  
+  #-----------run inference Learning model to fixed data
+  G <-  Gfixed
+
+  data <- list("G", "ntrials")
+  params <- c("theta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                  model.file = "chick_learn.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+  DIC.ml_df <- samples$BUGSoutput$DIC 
+  
+  #-------------write result down
+  data_frame <- data.frame("ID" = i,DIC.mf_df, DIC.mf_dl, DIC.ml_dl, DIC.ml_df)
+  confusion_df <- rbind(confusion_df, data_frame)
+  
+  
+}
+
+
+```
+
+
+```{r}
+library(tidyverse)
+fixed_model_df <- confusion_df %>%
+  select(ID, DIC.mf_df, DIC.ml_df) %>% 
+  mutate("Target" = "Fixed",
+         "Prediction" = ifelse(DIC.mf_df<DIC.ml_df, "Fixed", "Learning")) %>% 
+  select(Target:Prediction)
+
+learning_model_df <- confusion_df %>% 
+  select(ID, DIC.ml_dl, DIC.mf_dl) %>% 
+  mutate("Target" = "Learning",
+         "Prediction" = ifelse(DIC.ml_dl<DIC.mf_dl, "Learning", "Fixed")) %>% 
+  select(Target:Prediction)
+
+conf_df_new <- rbind(fixed_model_df, learning_model_df) 
+conf_df_new$Target <- as.factor(conf_df_new$Target)
+conf_df_new$Prediction <- as.factor(conf_df_new$Prediction)     
+
+
+pacman::p_load(yardstick, viridis, scales) 
+cm <- yardstick::conf_mat(conf_df_new, truth = Target, estimate = Prediction)
+autoplot(cm, type = "heatmap")+
+  scale_fill_gradient(low = "lightblue4", high = "lightblue1")
+```
+
