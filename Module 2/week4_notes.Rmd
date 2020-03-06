@@ -110,3 +110,196 @@ for (i in 1:niterations){
 
 ```
 
+
+
+
+
+# Thank you Maris <3
+Generate task environment
+
+```{r}
+ntrials <- 100
+
+Aprob <- .3
+Arew <- 2
+
+Bprob <- .8
+Brew <- 1
+
+#generate a payoff matrix
+payoff <- cbind(rbinom(ntrials, 1, Aprob) * Arew, rbinom(ntrials, 1, Bprob) * Brew) #why rbinom?
+
+colSums(payoff)
+```
+
+Run the CK model
+```{r}
+# lets call the function we wrote
+# first give it some parameters
+
+a <- .1
+beta <- 5 #consistency parameter, the higher the more consistent (less explorative) the agent is
+
+source("RW_CK.R")
+
+kernel_sims <- kernel(payoff, ntrials, a, beta)
+
+par(mfrow=c(3,1)) #plot with 3 rows and 1 column
+plot(kernel_sims$CK[,1])
+plot(kernel_sims$CK[,2])
+plot(kernel_sims$x)
+
+```
+
+recovering parameters with JAGS, copied from Class6
+```{r}
+X <- kernel_sims$x
+r <- kernel_sims$r
+
+data <- list("X", "r", "ntrials")
+params <- c("a", "beta")
+
+samples <- jags.parallel(data, inits = NULL, params,
+                model.file = "jags_models/kernel.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+
+a_infer <- samples$BUGSoutput$sims.list$a
+beta_infer <- samples$BUGSoutput$sims.list$beta
+
+par(mfrow=c(1,1))
+plot(density(a_infer))
+plot(density(beta_infer))
+
+```
+
+Model recovery for 2 models: RW and kernel model, we should expect 50% model recovery (gotta add the 1 somewhere to improve this bad recovery)
+```{r}
+# Setting up task environment - copied from above
+ntrials <- 100
+
+Aprob <- .3
+Arew <- 2
+
+Bprob <- .8
+Brew <- 1
+
+#generate a payoff matrix
+payoff <- cbind(rbinom(ntrials, 1, Aprob) * Arew, rbinom(ntrials, 1, Bprob) * Brew) #why rbinom?
+
+colSums(payoff)
+
+### --- ###
+
+niterations <- 5 #set this higher (than 5) later plz
+
+DICs_RW_dat <- array(0,c(niterations,2))
+DICs_kernel_dat <- array(0,c(niterations,2))
+
+for (i in 1:niterations) {
+  #randomly set learning rate
+  a <- runif(1,0,1)
+  beta <- rgamma(1,1,1)
+  
+  #run both models
+  source("R_fun/RW.R")
+  RW_sims <- RW(payoff,ntrials,a,beta)
+  
+  source("R_fun/RW_CK.R")
+  kernel_sims <- kernel(payoff,ntrials,a,beta)
+  
+  # ----------- RW simulation, RW model
+  X <- RW_sims$x
+  r <- RW_sims$r
+  
+  data <- list("X", "r", "ntrials")
+  params <- c("a", "beta")
+  
+  RW.dat_RW.mod <- jags.parallel(data, inits = NULL, params,
+                model.file = "jags_models/RW.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  RW.dat_Kernel.mod <- jags.parallel(data, inits = NULL, params,
+                model.file = "jags_models/kernel.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  # ----------- Kernel simulation, kernel model
+  
+  X <- kernel_sims$x
+  r <- kernel_sims$r
+  
+  data <- list("X", "r", "ntrials")
+  params <- c("a", "beta")
+  
+  Kernel.dat_Kernel.mod <- jags.parallel(data, inits = NULL, params,
+                model.file = "jags_models/kernel.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  Kernel.dat_RW.mod <- jags.parallel(data, inits = NULL, params,
+                model.file = "jags_models/RW.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  # ----------- Getting numbers out
+  DICs_RW_dat[i,1] <- RW.dat_RW.mod$BUGSoutput$DIC
+  DICs_RW_dat[i,2] <- RW.dat_Kernel.mod$BUGSoutput$DIC
+  DICs_kernel_dat[i,1] <- Kernel.dat_Kernel.mod$BUGSoutput$DIC
+  DICs_kernel_dat[i,2] <- Kernel.dat_RW.mod$BUGSoutput$DIC
+  
+}
+
+best_RW <- array(0,c(niterations))
+best_kernel <- array(0,c(niterations))
+for (i in 1:niterations) {
+  best_RW[i] <- which.min(DICs_RW_dat[i,])
+  best_kernel <- which.min(DICs_kernel_dat[i,])
+}
+
+best_RW
+best_kernel
+
+```
+
+
+Have not run nor fixed this:
+```{r}
+#run full parameter recovery
+niterations <- 10
+true_a <- array(0, c(niterations))
+true_beta <- array(0, c(niterations))
+
+infer_a <- array(0,c(niterations))
+infer_beta <- array(0,c(niterations))
+
+##
+
+for (i in 1:niterations) {
+  # true parameters
+  a <- runif(1,0,1)
+  beta <- runif(1,0,5)
+  
+  #fun function and extract responses
+  RW_sims <- RW(payoff, ntrials, a, beta)
+  X <- RW_sims$x
+  r <- RW_sims$r
+  
+  data <- list("X", "r", "ntrials")
+  params <- c("a", "beta")
+
+  samples <- jags.parallel(data, inits = NULL, params,
+                  model.file = "RW.txt",
+                  n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  true_a[i] <- a
+  true_beta[i] <- beta
+  
+  #find max posteriori
+  X <- samples$BUGSoutput$sims.list$a
+  infer_a[i] <- density(X)$x[which(density(X)$y==max(density(X)$y))]
+  
+  X <- samples$BUGSoutput$sims.list$beta
+  infer_beta[i] <- density(X)$x[which(density(X)$y==max(density(X)$y))]
+  
+  print(i)
+}
+```
+
+```
+

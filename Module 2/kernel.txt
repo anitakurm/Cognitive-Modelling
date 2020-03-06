@@ -1,0 +1,36 @@
+model {
+
+  a ~ dunif(0,1)
+  beta ~ dgamma(1,1) #funky stuff
+
+  #set values for trial 1
+  CK[1,1] ~ dnorm(0,0.01)T(0,1)
+  CK[1,2] ~ dnorm(0,0.01)T(0,1)
+  
+  for (t in 2:ntrials) {
+    
+    for (k in 1:2) {
+      
+      CKchosen[t,k] <- CK[t-1,k] + ( a * (1-CK[t-1,k]) )  #deterministic
+      CKunchosen[t,k] <- CK[t-1,k] + (a* (0-CK[t-1,k]))
+      
+      CK[t,k] <- ifelse(k==X[t-1],CKchosen[t,k],CKunchosen[t,k])
+      
+      #calculate the loose choice
+      exp_p[t,k] <- exp(beta * CK[t,k]) #softmax
+      
+    }
+    
+    #loose choice rule!
+    for (k in 1:2) {
+      
+      #lets calculate p
+      p[t,k] <- exp_p[t,k]/sum(exp_p[t,])
+      
+    } #k is index for bandit
+    
+    X[t] ~ dcat(p[t,]) #this is NOT deterministic
+    
+  }
+
+}
