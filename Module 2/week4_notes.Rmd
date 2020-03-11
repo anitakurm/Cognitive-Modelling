@@ -160,7 +160,7 @@ data <- list("X", "r", "ntrials")
 params <- c("a", "beta")
 
 samples <- jags.parallel(data, inits = NULL, params,
-                model.file = "jags_models/kernel.txt",
+                model.file = "kernel.txt",
                 n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
 
 a_infer <- samples$BUGSoutput$sims.list$a
@@ -169,6 +169,8 @@ beta_infer <- samples$BUGSoutput$sims.list$beta
 par(mfrow=c(1,1))
 plot(density(a_infer))
 plot(density(beta_infer))
+
+
 
 ```
 
@@ -201,10 +203,10 @@ for (i in 1:niterations) {
   beta <- rgamma(1,1,1)
   
   #run both models
-  source("R_fun/RW.R")
+  source("RW.R")
   RW_sims <- RW(payoff,ntrials,a,beta)
   
-  source("R_fun/RW_CK.R")
+  source("RW_CK.R")
   kernel_sims <- kernel(payoff,ntrials,a,beta)
   
   # ----------- RW simulation, RW model
@@ -215,11 +217,11 @@ for (i in 1:niterations) {
   params <- c("a", "beta")
   
   RW.dat_RW.mod <- jags.parallel(data, inits = NULL, params,
-                model.file = "jags_models/RW.txt",
+                model.file = "RW.txt",
                 n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
   
   RW.dat_Kernel.mod <- jags.parallel(data, inits = NULL, params,
-                model.file = "jags_models/kernel.txt",
+                model.file = "kernel.txt",
                 n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
   
   # ----------- Kernel simulation, kernel model
@@ -231,11 +233,11 @@ for (i in 1:niterations) {
   params <- c("a", "beta")
   
   Kernel.dat_Kernel.mod <- jags.parallel(data, inits = NULL, params,
-                model.file = "jags_models/kernel.txt",
+                model.file = "kernel.txt",
                 n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
   
   Kernel.dat_RW.mod <- jags.parallel(data, inits = NULL, params,
-                model.file = "jags_models/RW.txt",
+                model.file = "RW.txt",
                 n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
   
   # ----------- Getting numbers out
@@ -299,6 +301,8 @@ for (i in 1:niterations) {
   
   print(i)
 }
+
+
 ```
 
 ```

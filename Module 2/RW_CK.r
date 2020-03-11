@@ -36,12 +36,12 @@ kernel <- function(payoff,ntrials,a,beta){ #a - learning rate, b - inverse heat
       
       CK[t,k] <- ifelse(k==X[t-1],CKchosen[t,k],CKunchosen[t,k]) #we only want to update the one that got chosen; there's no decay in this model
       
-      #calculate the loose choice
+      #calculate the luce choice
       exp_p[t,k] <- exp(beta * CK[t,k])
       
     }
     
-    #loose choice rule!
+    #luce choice rule!
     for (k in 1:2) {
       
       #lets calculate p
