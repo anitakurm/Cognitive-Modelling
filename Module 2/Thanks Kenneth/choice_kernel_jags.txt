@@ -5,7 +5,8 @@ model {
   
     # infer internal states
   alpha  ~ dunif(0,1)
-  beta ~ dt(0, .16, 1)T(0,)
+  #beta ~ dt(0, .16, 1)T(0,)
+  beta ~ dgamma(1,1)
   
   for (t in 2:n_trials){
     for (k in 1:2){

@@ -1,0 +1,277 @@
+---
+title: "Assignment 2"
+author: "Anita Kurm"
+date: "3/11/2020"
+output: html_document
+---
+
+# Set-up
+```{r}
+pacman::p_load(extraDistr, R2jags, tidyverse)
+source("/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 1/quick_n_clean_plots.R")
+source("agents.R")
+
+
+# maximum aposterior function:
+jag_map <- function(param_samples){
+  dens <- density(param_samples)
+  return(dens$x[dens$y == max(dens$y)])
+}
+```
+
+
+# Rescorla-Wagner Q-learning vs Choice Kernel model
+Evaluate the Q-learning model by comparison to the choice kernel model.
+
+## Task environment innitiation
+
+```{r}
+n_trials <- 100
+
+Aprob <- .3
+Arew <- 2
+
+Bprob <- .8
+Brew <- 1
+
+#generate a payoff matrix
+payoff <- cbind(rbinom(n_trials, 1, Aprob) * Arew, rbinom(n_trials, 1, Bprob) * Brew)
+
+```
+
+
+
+
+## Q-learning Parameter recovery
+```{r}
+set.seed(666)
+
+n_simulations <- 75
+
+alpha_true <- array(0, c(n_simulations))
+alpha_infer <- array(0, c(n_simulations))
+
+beta_true <- array(0, c(n_simulations))
+beta_infer <- array(0, c(n_simulations))
+
+######THE LOOOP
+for (i in 1:n_simulations) {
+  print(i)
+  
+  #fixed parameters (learning rate alpha and inverse heat beta)
+  alpha <- runif(1, 0, 1)
+  beta <- rgamma(1,1,1)
+  
+  RW_sims <- rw(payoff, alpha, beta)
+  choice <- RW_sims$choice 
+  r <- RW_sims$reward
+  
+  alpha_true[i] <- alpha
+  beta_true[i] <- beta
+  
+  data <- list("choice", "r", "n_trials")
+  params <- c("alpha", "beta")
+  
+  samples <- jags.parallel(data, inits = NULL, params,
+                model.file = "/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 2/Thanks Kenneth/rw_jags.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  alpha_infer[i] <- jag_map(samples$BUGSoutput$sims.list$alpha)
+  beta_infer[i] <- jag_map(samples$BUGSoutput$sims.list$beta)
+}
+
+```
+
+
+Plot:
+
+```{r}
+plot_actual_predicted(alpha_true , alpha_infer)
+plot_actual_predicted(beta_true , beta_infer)
+```
+
+
+
+## CK parameter recovery
+```{r}
+set.seed(666)
+
+n_simulations <- 75
+
+alpha_true <- array(0, c(n_simulations))
+alpha_infer <- array(0, c(n_simulations))
+
+beta_true <- array(0, c(n_simulations))
+beta_infer <- array(0, c(n_simulations))
+
+######THE LOOOP
+for (i in 1:n_simulations) {
+  print(i)
+  #fixed parameters (learning rate alpha and inverse heat beta)
+  alpha <- runif(1, 0, 1)
+  beta <- rgamma(1,1,1)
+  
+  kernel_sims <- choice_kernel(payoff, alpha, beta)
+  choice <- kernel_sims$choice 
+  reward <- kernel_sims$reward
+  
+  alpha_true[i] <- alpha
+  beta_true[i] <- beta
+  
+  data <- list("choice", "reward", "n_trials")
+  params <- c("alpha", "beta")
+  
+  samples <- jags.parallel(data, inits = NULL, params,
+                model.file = "/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 2/Thanks Kenneth/choice_kernel_jags.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  
+  alpha_infer[i] <- jag_map(samples$BUGSoutput$sims.list$alpha)
+  beta_infer[i] <- jag_map(samples$BUGSoutput$sims.list$beta)
+  
+}
+
+```
+
+
+
+Plot true vs inferred:
+```{r}
+plot_actual_predicted(alpha_true , alpha_infer)
+plot_actual_predicted(beta_true , beta_infer)
+```
+
+
+
+```{r}
+
+
+set.seed(666)
+
+
+confusion_df <- data.frame() # creates an emmpty data frame
+
+for (i in 1:n_simulations) {
+  
+  print(i)
+  
+  #---------------------------simulate data
+  #simulate RW model data
+  alpha <- runif(1, 0, 1)
+  beta <- rgamma(1,1,1)
+  
+  RW_sims <- rw(payoff, alpha, beta)
+
+  
+  #simulate choice_kernel
+  alpha <- runif(1, 0, 1)
+  beta <- rgamma(1,1,1)
+  
+  kernel_sims <- choice_kernel(payoff, alpha, beta)
+  
+  
+  #-----------run inference RW model to RW data
+  choice <- RW_sims$choice 
+  r <- RW_sims$reward
+  
+  #data and params
+  data <- list("choice", "r", "n_trials")
+  params <- c("alpha", "beta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 2/Thanks Kenneth/rw_jags.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+  DIC.rwm_rwd <- samples$BUGSoutput$DIC 
+  
+  
+  #-----------run inference CK model to RW data
+  
+  #data and params
+  choice <- RW_sims$choice 
+  reward <- RW_sims$reward
+
+  data <- list("choice", "reward", "n_trials")
+  params <- c("alpha", "beta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 2/Thanks Kenneth/choice_kernel_jags.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+  DIC.ckm_rwd <- samples$BUGSoutput$DIC 
+  
+  
+  #-----------run inference CK model to CK data
+  
+  #data and params
+  choice <- kernel_sims$choice 
+  reward <- kernel_sims$reward
+  
+  data <- list("choice", "reward", "n_trials")
+  params <- c("alpha", "beta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                model.file = "/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 2/Thanks Kenneth/choice_kernel_jags.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+  DIC.ckm_ckd <- samples$BUGSoutput$DIC
+  
+  
+  #-----------run inference RW model to CK data
+
+  #data and params
+  choice <- kernel_sims$choice 
+  r <- kernel_sims$reward
+  
+  data <- list("choice", "r", "n_trials")
+  params <- c("alpha", "beta")
+
+  #jags
+  samples <- jags(data, inits = NULL, params,  
+                  model.file = "/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 2/Thanks Kenneth/rw_jags.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1) #you average over the sampling chains, 3 is normal, don't go below 3
+
+
+  DIC.rwm_ckd <- samples$BUGSoutput$DIC 
+  
+  #-------------write result down
+  data_frame <- data.frame("ID" = i, DIC.rwm_rwd, DIC.ckm_rwd, DIC.ckm_ckd, DIC.rwm_ckd)
+  confusion_df <- rbind(confusion_df, data_frame)
+  
+}
+```
+
+
+```{r}
+#write.csv(confusion_df, "conf_df_messed.csv")
+#write.csv(confusion_df, "conf_df_right.csv")
+
+library(tidyverse)
+rw_df <- confusion_df %>%
+  select(ID, DIC.rwm_rwd, DIC.ckm_rwd) %>% 
+  mutate("Target" = "Q-learning",
+         "Prediction" = ifelse(DIC.rwm_rwd<DIC.ckm_rwd, "Q-learning", "Choice Kernel")) %>% 
+  select(Target:Prediction)
+
+ck_df <- confusion_df %>%
+  select(ID, DIC.rwm_ckd, DIC.ckm_ckd) %>% 
+  mutate("Target" = "Choice Kernel",
+         "Prediction" = ifelse(DIC.ckm_ckd<DIC.rwm_ckd, "Choice Kernel", "Q-learning")) %>% 
+  select(Target:Prediction)
+
+
+conf_df_new <- rbind(rw_df, ck_df) 
+conf_df_new$Target <- as.factor(conf_df_new$Target)
+conf_df_new$Prediction <- as.factor(conf_df_new$Prediction) 
+
+pacman::p_load(yardstick, viridis, scales)
+cm <- yardstick::conf_mat(conf_df_new, truth = Target, estimate = Prediction)
+autoplot(cm, type = "heatmap")+
+  scale_fill_gradient(low = "lightblue1", high = "lightblue4")
+```
+
