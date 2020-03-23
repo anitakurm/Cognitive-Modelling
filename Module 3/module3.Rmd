@@ -8,10 +8,19 @@ output: html_document
 
 # Set-up
 ```{r}
-pacman::p_load(extraDistr, R2jags)
+pacman::p_load(extraDistr, R2jags, tidyverse)
 source("/Users/anitakurm/Desktop/Masters 2nd semester/Cognitive-Modelling/Module 1/quick_n_clean_plots.R")
 
+# maximum aposterior function:
+jag_map <- function(param_samples){
+  dens <- density(param_samples)
+  return(dens$x[dens$y == max(dens$y)])
+}
+
 ```
+
+
+# PVL model
 
 Generarte task environment: Iowa gambling task
 4 decks, the person is told both what they won but also what they lost
@@ -54,7 +63,7 @@ payoff <- cbind(A,B,C,D)
 
 ```{r}
 #build PVL-Delta model
-w <- 2
+w <- 2 #loss aversion parameter 
 A <- .5  #shape of the utility function, has to be between  0 and 1
 
 theta <- .01 #response consistency in the softmax function
@@ -114,5 +123,217 @@ samples <- jags.parallel(data, inits = NULL, params,
   subjective_util <- -w*(objective_val^A) #prospect theory
   plot(objective_val, subjective_util)
 ```
+
+
+
+# ORL model
+The Outcome Representation Learning model
+– Haines, Vassileva, & Ahn, 2018
+
+
+Generarte task environment: Iowa gambling task
+4 decks, the person is told both what they won but also what they lost
+
+```{r}
+#----------------------generate task environment
+
+#Bad frequent
+A_R <-  rep(100, 10) #reward for deck A: 10 rewards of 100kr (100 kr every time you choose Deck A)
+A_L <- c(rep(-250, 5), rep(0,5)) #5 big losses, 5 no loss
+
+
+#Bad infrequent
+B_R <-  rep(100, 10) #reward for deck B: 10 rewards of 100kr if you choose Deck A
+B_L <- c(rep(-1250, 1), rep(0,9))   #1 very big loss, 9 no loss
+
+#Good frequent
+C_R <-  rep(50, 10) #reward for deck A: 10 rewards of 100kr if you choose Deck A
+C_L <- c(rep(-50, 5), rep(0,5))
+
+#Good infrequent
+D_R <-  rep(50, 10) #reward for deck A: 10 rewards of 100kr if you choose Deck A
+D_L <- c(rep(-250, 1), rep(0,9))
+
+A <-c()
+for (i in 1:10){ A <- (append(A, A_R + sample(A_L)))} #take reward and loss, shuffle and add up all combinations, get 10*10 = 100 outcomes for decks 
+
+B <-c()
+for (i in 1:10){ B <- (append(B, B_R + sample(B_L)))}
+
+C <-c()
+for (i in 1:10){ C <- (append(C, C_R + sample(C_L)))}
+
+D <-c()
+for (i in 1:10){ D <- (append(D, D_R + sample(D_L)))}
+
+payoff <- cbind(A,B,C,D)
+payoff <- payoff/100
+```
+
+
+
+## Set all six free parameters
+```{r}
+alpha_rew <- .2  
+alpha_pun <- .5
+
+beta_f <- -2 #weight of frequency - values for bF less than or greater than 0 indicate that decision mak- ers prefer decks with low or high win frequency
+beta_per <- 1.5 #weight of perseverance <-  values for bP less than or greater than 0 indicate that decision makers prefer to switch or stay with recently chosen decks, respectively
+
+K <- 1  #a decay parameter controlling how quickly decision makers forget their past deck choice
+theta <- 1 #in in the softmax function
+
+ntrials = 100
+```
+
+
+## Simulate ORL data
+
+```{r}
+source("ORL.R")
+ORL_sims <- ORL(payoff, ntrials, alpha_rew, alpha_pun, beta_f, beta_per, K, theta)
+
+plot(ORL_sims$x)
+
+par(mfrow=c(2,2))
+plot(ORL_sims$V[,1])
+plot(ORL_sims$V[,2])
+plot(ORL_sims$V[,3])
+plot(ORL_sims$V[,4])
+
+
+par(mfrow=c(2,2))
+plot(ORL_sims$Ev[,1])
+plot(ORL_sims$Ev[,2])
+plot(ORL_sims$Ev[,3])
+plot(ORL_sims$Ev[,4])
+
+
+par(mfrow=c(2,2))
+plot(ORL_sims$PS[,1])
+plot(ORL_sims$PS[,2])
+plot(ORL_sims$PS[,3])
+plot(ORL_sims$PS[,4])
+
+par(mfrow=c(2,2))
+plot(ORL_sims$p[,1])
+plot(ORL_sims$p[,2])
+plot(ORL_sims$p[,3])
+plot(ORL_sims$p[,4])
+
+
+```
+
+
+## Parameter Recovery
+TO DO: more simularions with different parameters
+```{r}
+x <- ORL_sims$x
+X <-  ORL_sims$X
+
+data <- list("x", "X", "ntrials")
+params <- c("alpha_rew", "alpha_pun", "beta_f", "beta_per", "K", "theta")
+
+samples <- jags.parallel(data, inits = NULL, params,
+                model.file = "ORL_jags.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+
+#inferred params
+
+inferredK <- jag_map(samples$BUGSoutput$sims.list$K)
+plot_actual_predicted(K, inferredK)
+
+inferred_arew <- jag_map(samples$BUGSoutput$sims.list$alpha_rew)
+plot_actual_predicted(alpha_rew, inferred_arew)
+
+inferred_apun <- jag_map(samples$BUGSoutput$sims.list$alpha_pun)
+plot_actual_predicted(alpha_pun, inferred_apun)
+
+inferred_betaf <- jag_map(samples$BUGSoutput$sims.list$beta_f)
+plot_actual_predicted(alpha_rew, inferred_betaf)
+
+inferred_betaper <- jag_map(samples$BUGSoutput$sims.list$beta_per)
+plot_actual_predicted(alpha_rew, inferred_betaper)
+
+inferred_theta <- jag_map(samples$BUGSoutput$sims.list$theta)
+plot_actual_predicted(alpha_rew, inferred_theta)
+```
+
+
+
+# VSE model
+Value plus Sequential Exploration (VSE) model
+
+## Task environment
+```{r}
+RA <- A
+RA[A < 0] = 100
+RB <- B
+RB[B < 0] = 100
+RC <- C
+RC[C <= 0] = 50
+RD <- D
+RD[D < 0] = 50
+
+# extract losses from reward trials
+LA <- A
+LA[A > 0] = 0
+LA[LA < 0] = -250
+LB <- B
+LB[B > 0] = 0
+LB[LB < 0] = -1250
+LC <- C
+LC[C == 0] = -50
+LC[LC > 1] = 0
+LD <- D
+LD[D > 0] = 0
+LD[LD < 0] = -250
+
+R <- cbind(RA,RB,RC,RD)
+L <- cbind(LA,LB,LC,LD)
+
+Loss_matrix <- abs(L)
+Gain_matrix <- R
+
+```
+
+
+## Set all five free parameters
+
+```{r}
+
+theta = 0.01  #value sensitivity parameter - bound between 0 and 1
+delta = 0.4 #decay parameter, bound between 0 and 1
+alpha = 0.5 #learning rate bound between 0 and 1
+phi = 0.8  #exploration bonus - unbounded, positive means agent is attracted by unchosen recently decks, negative means agent favors familiar decks
+beta = 0.9 #inverse temperature bound between 0 and 5
+
+
+ntrials = 100
+```
+
+
+## Simulate data
+```{r}
+source("VSE.R")
+VSE_sims <- VSE(Gain_matrix, Loss_matrix, ntrials, theta, delta, alpha, phi, beta)
+
+plot(VSE_sims$x)
+plot(VSE_sims$value)
+plot(VSE_sims$Explore[,1])
+plot(VSE_sims$Explore[,2])
+plot(VSE_sims$Explore[,3])
+plot(VSE_sims$Explore[,4])
+
+plot(VSE_sims$x)
+plot(VSE_sims$Explore[,1])
+plot(VSE_sims$Exploit[,1])
+
+
+plot(VSE_sims$x)
+plot(VSE_sims$Explore[,2])
+plot(VSE_sims$Exploit[,2])
+```
+
 
 
